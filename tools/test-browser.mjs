@@ -28,6 +28,8 @@
        taking the address over
      - a slug that names nothing falls back to the playlist
      - the last track runs into the first one
+     - shuffle walks the playlist without moving the list, and a permalink
+       still opens the song it names
 */
 
 import { spawn } from 'node:child_process';
@@ -164,6 +166,8 @@ window.__state = function () {
       function (li) { return li.dataset.skin; }),
     tab: (document.querySelector('.seg-b.is-on') || {}).id || '',
     note: (document.getElementById('playlistNote') || {}).textContent || '',
+    shuffled: !!document.getElementById('shuffle') &&
+      document.getElementById('shuffle').getAttribute('aria-pressed') === 'true',
     plays: window.__probe.plays.slice(),
     statuses: window.__probe.statuses.slice(),
     copied: window.__probe.copied.slice(),
@@ -902,6 +906,61 @@ async function autoplayAllowed({ songs, eps }) {
         is(s.canonical, 'https://radio.omarchy.org' + path, `${path} says what it is`);
       }
     }
+
+    // ── shuffle is an order, not a reordering of the list ──
+    await tab.go(song);
+    s = await until('the song before shuffle', async () => {
+      const st = await tab.state();
+      return st.playing && st.rows >= songs.length ? st : null;
+    });
+    const listed = s ? s.titles.join('|') : '';
+    await tab.click('#shuffle');
+    s = await until('shuffle on', async () => {
+      const st = await tab.state();
+      return st.shuffled ? st : null;
+    });
+    if (s) {
+      ok(/shuffled/.test(s.note), `the note says so: ${s.note.trim()}`);
+      is(s.titles.join('|'), listed, 'the list did not move');
+      is(s.row, wanted.title, 'the song that was named is still the one playing');
+      is(s.path, song, 'and the address still names it');
+    }
+    const shuffleEntries = (await tab.state()).entries;
+    await tab.click('#next');
+    s = await until('the song shuffle stepped to', async () => {
+      const st = await tab.state();
+      return st.playing && st.row && st.row !== wanted.title ? st : null;
+    });
+    if (s) {
+      is(s.titles.join('|'), listed, 'next did not reorder the list either');
+      ok(s.path.startsWith('/playlist/') && s.path !== song,
+         `the address follows the song it stepped to: ${s.path}`);
+      is(s.entries, shuffleEntries, 'without adding a history entry');
+    }
+    await tab.click('#prev');
+    s = await until('back to the named song', async () => {
+      const st = await tab.state();
+      return st.row === wanted.title ? st : null;
+    });
+    if (s) {
+      is(s.row, wanted.title, 'prev walks back to the song that was heard');
+      is(s.path, song, 'and the address comes back with it');
+    }
+    await tab.send('Page.reload');
+    s = await until('shuffle still on after a reload', async () => {
+      const st = await tab.state();
+      return st.playing && st.at > 0 && st.row === wanted.title ? st : null;
+    });
+    if (s) {
+      is(s.path, song, 'a permalink still opens the song it names');
+      is(s.shuffled, true, 'and the choice was kept');
+    }
+    await tab.click('#shuffle');
+    s = await until('shuffle off', async () => {
+      const st = await tab.state();
+      return st.shuffled ? null : st;
+    });
+    if (s) ok(/on repeat/.test(s.note), `back to the rotation: ${s.note.trim()}`);
   } finally {
     await tab.close();
     await browser.close();

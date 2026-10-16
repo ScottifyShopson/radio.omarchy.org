@@ -69,6 +69,26 @@ export const ICONS: Record<string, Icon> = {
     cells: [...triangle(SMALL, 'right', 0, 5), ...triangle(SMALL, 'right', 6, 5)],
   },
 
+  /* Two arrows, one each way, on the same 12x10 box as the rest of the
+     transport. A crossing pair does not survive at this size without
+     becoming a knot; the pair still says the order leaves and comes back
+     somewhere else, which is what shuffle is here. */
+  shuffle: {
+    w: 12, h: 10, label: 'Shuffle',
+    cells: [
+      [9, 0, 1, 1],
+      [0, 1, 10, 1],
+      [0, 2, 11, 1],
+      [8, 3, 2, 1],
+      [9, 4, 1, 1],
+      [2, 5, 1, 1],
+      [2, 6, 10, 1],
+      [1, 7, 11, 1],
+      [2, 8, 2, 1],
+      [2, 9, 1, 1],
+    ],
+  },
+
   /* The carets: the theme menu's, and the one on an episode's row. */
   'caret-down': {
     w: 7, h: 4, label: 'Open',

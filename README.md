@@ -68,6 +68,26 @@ top, because joining a song part-way through is what tuning in has always
 been. A returning listener whose browser already trusts the site gets the
 sound immediately.
 
+## Shuffle
+
+The list is the playlist, in the order the songs were contributed, and that
+is the order it plays in. **shuffle** is the other one. It sits with the
+transport — `s` does the same thing — and it is a pass: every song once,
+then a new pass, and the song that just finished is not the first of it.
+Prev walks back through what was actually heard, rather than shuffling
+again aimed the other way.
+
+The rows do not move. A number is still the song's place in the playlist,
+the way it is while the find box is filtering, and a link still opens the
+song it names. Shuffle decides what comes *next*, not what a link means,
+and it stays out of the address: a shuffled deck is not a place you can
+send somebody. The choice is kept, the way a theme is. A return visit that
+asked for it starts somewhere in the list rather than at the top.
+
+It is the playlist's. An episode is a show, and the next episode is the
+next episode. The pass itself is [`src/lib/order.ts`](src/lib/order.ts),
+which is what `npm test` walks, so the button cannot drift from the rule.
+
 ## Finding a song
 
 Thirty-odd songs is a list you read; a hundred is a list you search. **find**

@@ -40,6 +40,9 @@ import { readFileSync } from 'node:fs';
 import { assignSlugs, fold, slugify } from '../src/lib/slug.ts';
 import { SKINS, derive } from '../src/scripts/theme.ts';
 import { ICONS } from '../src/lib/icons.ts';
+import {
+  dropWalk, emptyWalk, openingIndex, stepNext, stepPrev, take,
+} from '../src/lib/order.ts';
 /* The parsing, not the reading: the build imports the manifest and the feed
    through Vite, which plain node knows nothing about. This is the same code
    over the same two files. */
@@ -262,9 +265,9 @@ function foldRule() {
 const GLYPHS = new Set('\u25b6\u25c0\u25a0\u2759\u25bc\u25b2\u25be\u25b8\u2197');
 
 function iconRule() {
-  // The four the transport needs, both faces of the two that have two, and
-  // the arrow that says a link leaves the site.
-  for (const name of ['play', 'pause', 'stop', 'prev', 'next',
+  // The transport, both faces of the two that have two, and the arrow
+  // that says a link leaves the site.
+  for (const name of ['play', 'pause', 'stop', 'prev', 'next', 'shuffle',
                       'caret-down', 'caret-up', 'caret-right', 'arrow-ne']) {
     ok(ICONS[name], `there is no icon called ${name}`);
   }
@@ -279,6 +282,75 @@ function iconRule() {
     }
   }
   console.log(`  ${Object.keys(ICONS).length} icons, every cell a whole number inside its box`);
+}
+
+/* A seeded generator, so a pass can be walked twice and agree with itself.
+   Returns [0, 1), which is the contract deal() is written against. */
+function rngOf(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+function orderRule() {
+  for (const n of [1, 2, 3, 8, 40]) {
+    for (let seed = 1; seed <= 12; seed++) {
+      const rng = rngOf(seed * 1000 + n);
+      let current = openingIndex(n, rng);
+      const walk = emptyWalk();
+      const seen = [current];
+      for (let i = 1; i < n; i++) {
+        current = stepNext(walk, n, current, rng);
+        seen.push(current);
+      }
+      ok(new Set(seen).size === n,
+         `a pass of ${n} (seed ${seed}) repeated a song: ${seen.join(',')}`);
+      if (n > 1) {
+        const again = stepNext(walk, n, current, rng);
+        ok(again !== current,
+           `a new pass of ${n} opened on the song that just finished`);
+        ok(again !== seen[seen.length - 1],
+           `a new pass of ${n} repeated the end of the last one`);
+      }
+    }
+  }
+
+  // prev is the song that was heard, and next after that returns to it —
+  // not a fresh shuffle aimed backwards.
+  {
+    const rng = rngOf(7);
+    const walk = emptyWalk();
+    const first = stepNext(walk, 5, 0, rng);
+    ok(stepPrev(walk, 5, first) === 0, 'prev did not return to the song that was playing');
+    ok(stepNext(walk, 5, 0, rng) === first, 'next after prev did not return to the song it left');
+  }
+
+  // Nothing heard yet: prev has no answer, and the caller walks the list.
+  ok(stepPrev(emptyWalk(), 5, 2) === null, 'prev with no past invented one');
+
+  // A pressed row leaves the pass, and is what comes back on prev.
+  {
+    const walk = { ahead: [1, 2, 3, 9], behind: [] };
+    take(walk, 5, 0, 2);
+    ok(walk.behind.join() === '0', `take did not remember what was playing: ${walk.behind}`);
+    ok(walk.ahead.join() === '1,3', `take left the pressed song waiting: ${walk.ahead}`);
+    ok(stepPrev(walk, 5, 2) === 0, 'prev after a press is not the song that was playing');
+  }
+
+  {
+    const walk = emptyWalk();
+    walk.ahead = [1, 2];
+    walk.behind = [0];
+    dropWalk(walk);
+    ok(walk.ahead.length === 0 && walk.behind.length === 0, 'dropWalk left a pass behind');
+  }
+
+  ok(openingIndex(1, () => 0.9) === 0, 'one song does not open on itself');
+  ok(openingIndex(0, () => 0.9) === -1, 'an empty list opened on a song');
+  ok(stepNext(emptyWalk(), 1, 0, () => 0.5) === 0, 'one song does not step off itself');
+  console.log('  a pass is every song once, and prev walks back through it');
 }
 
 function slugRule() {
@@ -330,6 +402,9 @@ async function main() {
 
   console.log('the icons are drawn, not typed');
   iconRule();
+
+  console.log('shuffle walks a pass, and the list stays where it is');
+  orderRule();
 
   console.log('the rule an address is spelled by');
   slugRule();
@@ -389,6 +464,7 @@ async function main() {
       // before the deck is.
       ok(body.includes('id="find"') && body.includes('id="findHint"'),
          `${path}: no find box`);
+      ok(body.includes('id="shuffle"'), `${path}: no shuffle control`);
       /* Every icon is drawn, not typed. A character here would be drawn by
          whatever font the browser fell back to, because none of these are in
          a subset this site ships — and ▶ and ◀ arrive as colour emoji on
