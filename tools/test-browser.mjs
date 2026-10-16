@@ -956,7 +956,8 @@ async function autoplayAllowed({ songs, eps }) {
     });
     if (s) {
       is(s.path, song, 'a permalink still opens the song it names');
-      is(s.shuffled, true, 'and the choice was kept');
+      is(s.shuffled, true, 'and the seed on the address came back with it');
+      ok(/[?&]seed=/.test(s.search), `the reload kept the seed: ${s.search}`);
     }
     await tab.click('#shuffle');
     s = await until('shuffle off', async () => {
@@ -1140,6 +1141,20 @@ async function seededShuffle({ songs }) {
       return st.playing && st.row && st.row !== song.title ? st : null;
     });
     if (s) ok(s.search.includes('seed=omarchy'), `the step kept the seed: ${s.search}`);
+
+    // The address is the only copy. A front page with no seed is in order,
+    // even in a browser that just played one.
+    await tab.go('/');
+    s = await until('the front page with no seed', async () => {
+      const st = await tab.state();
+      return st.playing && st.at > 0 && st.rows >= songs.length ? st : null;
+    });
+    if (s) {
+      is(s.shuffled, false, 'no seed is not a shuffle');
+      is(s.search, '', `the address did not keep one: ${s.search}`);
+      ok(/on repeat/.test(s.note), `back to the rotation: ${s.note.trim()}`);
+      is(s.row, songs[0].title, 'and the playlist starts from the top');
+    }
   } finally {
     await tab.close();
     await browser.close();

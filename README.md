@@ -84,10 +84,10 @@ says which shuffle it sits in, and the path says where you enter it. The
 canonical link leaves the seed off. A shuffled deck is a way of listening,
 not a different page, and a crawler should not file one seed per song.
 
-The name is kept, the way a theme is, so a return visit that asked for
-shuffle is the same shuffle and not a new one. Following someone else's
-seed plays theirs for this visit and does not become yours. Turning shuffle
-on mints a name; turning it off takes it out of the address.
+The address is the only copy. Nothing is kept beside it, the way a theme
+is. Open the front page and it plays in order; open `?seed=omarchy` and it
+is that shuffle, for as long as the address says so. Turning shuffle on
+mints a name and puts it there; turning it off takes it off.
 
 It is the playlist's. An episode is a show, and the next episode is the
 next episode. A new song joins the order where the name puts it and does

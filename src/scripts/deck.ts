@@ -48,13 +48,6 @@ var STORE_KEY = 'omarchy-radio-skin';
 var STORE_PIN = 'omarchy-radio-skin-pinned';
 var STORE_TRACKS = 'omarchy-radio-playlist';
 var STORE_STORIES = 'omarchy-radio-stories';
-/* Whether the listener asked for shuffle, and the name of the one they
-   are in. The address carries the name too, when it is on — that is the
-   link. The stored copy is what a return visit opens on, not what a link
-   somebody else sent becomes. */
-var STORE_SHUFFLE = 'omarchy-radio-shuffle';
-var STORE_SEED = 'omarchy-radio-seed';
-
 var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ── the elements ────────────────────────────────────────
@@ -939,24 +932,13 @@ function toggleShuffle() {
   // The first press anywhere buys the sound. This one is a control, so the
   // gesture handler leaves it alone, and it has to say so itself.
   if (silenced()) unsilence();
-  // Turning it on mints a name. Turning it off takes the name out of the
-  // address. Either way it is their choice, so it is what a return visit
-  // opens on — unlike a seed they followed, which is only this visit.
-  adoptSeed(shuffled ? '' : mintSeed(), true);
+  // Turning it on mints a name and puts it on the address. Turning it off
+  // takes the name off. That is the whole of the storage: a return visit
+  // is whatever address was opened, not a copy kept beside it.
+  adoptSeed(shuffled ? '' : mintSeed());
   if (!silenced()) setStatus(shuffled ? 'shuffled' : 'on repeat');
   paintShuffleChrome();
   syncRoute('replace');
-}
-
-function readStored(key: string): string {
-  try { return localStorage.getItem(key) || ''; } catch (e) { return ''; }
-}
-
-function saveShuffle(on: boolean) {
-  try {
-    localStorage.setItem(STORE_SHUFFLE, on ? '1' : '0');
-    if (on && seedStr) localStorage.setItem(STORE_SEED, seedStr);
-  } catch (e) { /* private mode */ }
 }
 
 function rebuildOrder() {
@@ -965,24 +947,18 @@ function rebuildOrder() {
     : [];
 }
 
-/* A seed from a link is this visit. A seed from the button is also the
-   next visit. The ground is not touched here — it was filled once, at
-   boot, and filling it again would jump under whoever is looking at it. */
-function adoptSeed(text: string, persist: boolean) {
+/* The address is the seed. Nothing is written beside it. The ground is
+   not touched here — it was filled once, at boot, from whatever name the
+   address had then. */
+function adoptSeed(text: string) {
   var spell = spellSeed(text);
   shuffled = !!spell;
   seedStr = spell;
   rebuildOrder();
-  if (persist) saveShuffle(shuffled);
 }
 
-/* The link named a shuffle, so that wins, and it does not become the
-   listener's own. With nothing named, a return visit that asked for one
-   opens on the same name rather than minting another. */
 function bootSeed() {
-  var fromUrl = spellSeed(new URLSearchParams(location.search).get('seed'));
-  if (fromUrl) { adoptSeed(fromUrl, false); return; }
-  if (readStored(STORE_SHUFFLE) === '1') adoptSeed(readStored(STORE_SEED) || mintSeed(), true);
+  adoptSeed(new URLSearchParams(location.search).get('seed') || '');
 }
 
 function withSeed(path: string): string {
@@ -1764,7 +1740,7 @@ function wireLinks() {
     // the one this visit is already in.
     var linked = spellSeed(u.searchParams.get('seed'));
     if (linked && linked !== seedStr) {
-      adoptSeed(linked, false);
+      adoptSeed(linked);
       paintShuffleChrome();
     }
     if (navigate(r, 'push')) return;
@@ -2515,10 +2491,10 @@ function boot() {
   requestAnimationFrame(frame);
 
   tuneIn();
-  /* A stored shuffle, or a seed spelled with a capital, is written here
-     even when tune-in had nothing to play yet. Not while a link is still
-     waiting on its list: rewriting the address before that answer lands
-     would turn a slug the list has not seen into the list itself. */
+  /* A seed spelled with a capital is folded here, even when tune-in had
+     nothing to play yet. Not while a link is still waiting on its list:
+     rewriting the address before that answer lands would turn a slug the
+     list has not seen into the list itself. */
   if (!linkPending) syncRoute('replace');
   loadTracks();
   if (SHOW_PODCAST) loadStories();
@@ -2540,10 +2516,9 @@ function boot() {
      the bar. A route that names nothing here is not a reason to go quiet:
      the playlist answers, and the address stops claiming otherwise. */
   window.addEventListener('popstate', function () {
-    // Back restores the address, seed and all. A history entry with no
-    // seed is a visit that was in order, even if shuffle is this
-    // listener's usual.
-    adoptSeed(spellSeed(new URLSearchParams(location.search).get('seed')), false);
+    // Back restores the address, seed and all. An entry with no seed is
+    // in order, because the address is the only copy.
+    adoptSeed(new URLSearchParams(location.search).get('seed') || '');
     paintShuffleChrome();
     var r = here();
     if (navigate(r, 'replace')) return;
