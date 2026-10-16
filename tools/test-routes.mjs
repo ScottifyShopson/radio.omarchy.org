@@ -40,9 +40,8 @@ import { readFileSync } from 'node:fs';
 import { assignSlugs, fold, slugify } from '../src/lib/slug.ts';
 import { SKINS, derive } from '../src/scripts/theme.ts';
 import { ICONS } from '../src/lib/icons.ts';
-import {
-  dropWalk, emptyWalk, openingIndex, stepNext, stepPrev, take,
-} from '../src/lib/order.ts';
+import { permutationOf, stepPerm } from '../src/lib/order.ts';
+import { rngFrom, spellSeed, textureSeed } from '../src/lib/seed.ts';
 /* The parsing, not the reading: the build imports the manifest and the feed
    through Vite, which plain node knows nothing about. This is the same code
    over the same two files. */
@@ -284,73 +283,50 @@ function iconRule() {
   console.log(`  ${Object.keys(ICONS).length} icons, every cell a whole number inside its box`);
 }
 
-/* A seeded generator, so a pass can be walked twice and agree with itself.
-   Returns [0, 1), which is the contract deal() is written against. */
-function rngOf(seed) {
-  let s = seed >>> 0;
-  return () => {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-}
-
 function orderRule() {
-  for (const n of [1, 2, 3, 8, 40]) {
-    for (let seed = 1; seed <= 12; seed++) {
-      const rng = rngOf(seed * 1000 + n);
-      let current = openingIndex(n, rng);
-      const walk = emptyWalk();
-      const seen = [current];
-      for (let i = 1; i < n; i++) {
-        current = stepNext(walk, n, current, rng);
-        seen.push(current);
-      }
-      ok(new Set(seen).size === n,
-         `a pass of ${n} (seed ${seed}) repeated a song: ${seen.join(',')}`);
-      if (n > 1) {
-        const again = stepNext(walk, n, current, rng);
-        ok(again !== current,
-           `a new pass of ${n} opened on the song that just finished`);
-        ok(again !== seen[seen.length - 1],
-           `a new pass of ${n} repeated the end of the last one`);
-      }
+  const keys = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+  for (const name of ['omarchy', 'fork', '0', 'quattro']) {
+    const order = permutationOf(keys, name);
+    ok(new Set(order).size === keys.length, `${name} repeated a song: ${order.join(',')}`);
+    ok(order.every((i) => i >= 0 && i < keys.length), `${name} left the list`);
+    let at = order[0];
+    const seen = [at];
+    for (let i = 1; i < keys.length; i++) {
+      at = stepPerm(order, at, 1);
+      seen.push(at);
     }
+    ok(new Set(seen).size === keys.length, `${name} did not visit every song: ${seen.join(',')}`);
+    ok(stepPerm(order, at, 1) === order[0], `${name} did not wrap to its start`);
+    ok(stepPerm(order, order[0], -1) === order[order.length - 1], `${name}: prev did not wrap`);
+    ok(permutationOf(keys, name).join() === order.join(), `${name} is not the same shuffle twice`);
+    ok(permutationOf(keys, name.toUpperCase() + '!').join() === order.join(),
+       `${name} did not fold capitals and punctuation`);
   }
+  ok(permutationOf(keys, 'omarchy').join() !== permutationOf(keys, 'fork').join(),
+     'two names made the same shuffle');
+  ok(permutationOf(['only'], 'omarchy').length === 0, 'one song was given an order');
+  ok(permutationOf(keys, '').length === 0, 'an empty seed named an order');
+  ok(stepPerm(permutationOf(keys, 'omarchy'), -1, 1) === permutationOf(keys, 'omarchy')[0],
+     'next from nothing did not open on the first song');
 
-  // prev is the song that was heard, and next after that returns to it —
-  // not a fresh shuffle aimed backwards.
-  {
-    const rng = rngOf(7);
-    const walk = emptyWalk();
-    const first = stepNext(walk, 5, 0, rng);
-    ok(stepPrev(walk, 5, first) === 0, 'prev did not return to the song that was playing');
-    ok(stepNext(walk, 5, 0, rng) === first, 'next after prev did not return to the song it left');
-  }
+  // A new song slots in. The rest keep the order the name gave them.
+  const before = permutationOf(['a', 'b', 'c', 'd'], 'omarchy').map((i) => 'abcd'[i]);
+  const afterKeys = ['a', 'b', 'x', 'c', 'd'];
+  const after = permutationOf(afterKeys, 'omarchy').map((i) => afterKeys[i]).filter((k) => k !== 'x');
+  ok(before.join() === after.join(), `a new song reshuffled the rest: ${before} vs ${after}`);
 
-  // Nothing heard yet: prev has no answer, and the caller walks the list.
-  ok(stepPrev(emptyWalk(), 5, 2) === null, 'prev with no past invented one');
-
-  // A pressed row leaves the pass, and is what comes back on prev.
-  {
-    const walk = { ahead: [1, 2, 3, 9], behind: [] };
-    take(walk, 5, 0, 2);
-    ok(walk.behind.join() === '0', `take did not remember what was playing: ${walk.behind}`);
-    ok(walk.ahead.join() === '1,3', `take left the pressed song waiting: ${walk.ahead}`);
-    ok(stepPrev(walk, 5, 2) === 0, 'prev after a press is not the song that was playing');
-  }
-
-  {
-    const walk = emptyWalk();
-    walk.ahead = [1, 2];
-    walk.behind = [0];
-    dropWalk(walk);
-    ok(walk.ahead.length === 0 && walk.behind.length === 0, 'dropWalk left a pass behind');
-  }
-
-  ok(openingIndex(1, () => 0.9) === 0, 'one song does not open on itself');
-  ok(openingIndex(0, () => 0.9) === -1, 'an empty list opened on a song');
-  ok(stepNext(emptyWalk(), 1, 0, () => 0.5) === 0, 'one song does not step off itself');
-  console.log('  a pass is every song once, and prev walks back through it');
+  ok(spellSeed('Omarchy!') === 'omarchy', `a seed kept its punctuation: ${spellSeed('Omarchy!')}`);
+  ok(spellSeed('') === '' && spellSeed(null) === '', 'an empty seed is a shuffle');
+  ok(textureSeed('omarchy', 'jitter') === textureSeed('Omarchy', 'jitter'),
+     'the ground does not fold the name');
+  ok(textureSeed('omarchy', 'jitter') !== textureSeed('omarchy', 'noise'),
+     'jitter and noise are the same table');
+  ok(textureSeed('omarchy', 'jitter') !== textureSeed('fork', 'jitter'),
+     'two names are the same ground');
+  const rng = rngFrom(textureSeed('omarchy', 'jitter'));
+  const again = rngFrom(textureSeed('omarchy', 'jitter'));
+  ok(rng() === again() && rng() === again(), 'the ground is not the same numbers twice');
+  console.log('  a seed names one order, and a new song does not reshuffle it');
 }
 
 function slugRule() {
@@ -403,7 +379,7 @@ async function main() {
   console.log('the icons are drawn, not typed');
   iconRule();
 
-  console.log('shuffle walks a pass, and the list stays where it is');
+  console.log('a seed names one shuffle, and the list stays where it is');
   orderRule();
 
   console.log('the rule an address is spelled by');

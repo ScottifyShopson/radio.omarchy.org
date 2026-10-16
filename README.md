@@ -72,21 +72,32 @@ sound immediately.
 
 The list is the playlist, in the order the songs were contributed, and that
 is the order it plays in. **shuffle** is the other one. It sits with the
-transport — `s` does the same thing — and it is a pass: every song once,
-then a new pass, and the song that just finished is not the first of it.
-Prev walks back through what was actually heard, rather than shuffling
-again aimed the other way.
+transport — `s` does the same thing — and it is one order: every song once,
+then the same order again. Next and previous both walk it, so the song that
+just finished is not the next one, and two people on the same shuffle hear
+the same song come next.
 
-The rows do not move. A number is still the song's place in the playlist,
-the way it is while the find box is filtering, and a link still opens the
-song it names. Shuffle decides what comes *next*, not what a link means,
-and it stays out of the address: a shuffled deck is not a place you can
-send somebody. The choice is kept, the way a theme is. A return visit that
-asked for it starts somewhere in the list rather than at the top.
+A shuffle has a name, and the name is a `seed` on the address:
+`radio.omarchy.org/?seed=omarchy`. That is a place you can send somebody.
+The rows do not move, and a link to a song still opens that song — the seed
+says which shuffle it sits in, and the path says where you enter it. The
+canonical link leaves the seed off. A shuffled deck is a way of listening,
+not a different page, and a crawler should not file one seed per song.
+
+The name is kept, the way a theme is, so a return visit that asked for
+shuffle is the same shuffle and not a new one. Following someone else's
+seed plays theirs for this visit and does not become yours. Turning shuffle
+on mints a name; turning it off takes it out of the address.
 
 It is the playlist's. An episode is a show, and the next episode is the
-next episode. The pass itself is [`src/lib/order.ts`](src/lib/order.ts),
-which is what `npm test` walks, so the button cannot drift from the rule.
+next episode. A new song joins the order where the name puts it and does
+not reshuffle the rest — the rank is the name and the song, in
+[`src/lib/order.ts`](src/lib/order.ts), which is what `npm test` walks.
+
+The ground takes the same name, once, when the visit opens. The bars under
+the clock are not random: they are the record, or a stand-in that moves
+with the clock when the record cannot be heard. Seeding them would be
+seeding the song.
 
 ## Finding a song
 

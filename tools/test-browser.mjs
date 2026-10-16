@@ -30,6 +30,8 @@
      - the last track runs into the first one
      - shuffle walks the playlist without moving the list, and a permalink
        still opens the song it names
+     - ?seed= names one shuffle: the same opening, the same next, and it
+       stays off the canonical link
 */
 
 import { spawn } from 'node:child_process';
@@ -166,6 +168,7 @@ window.__state = function () {
       function (li) { return li.dataset.skin; }),
     tab: (document.querySelector('.seg-b.is-on') || {}).id || '',
     note: (document.getElementById('playlistNote') || {}).textContent || '',
+    search: location.search,
     shuffled: !!document.getElementById('shuffle') &&
       document.getElementById('shuffle').getAttribute('aria-pressed') === 'true',
     plays: window.__probe.plays.slice(),
@@ -1075,6 +1078,74 @@ async function offline({ songs }) {
   }
 }
 
+/* A seed is a shuffle you can send. Same name, same opening, same next,
+   and the page a crawler files is still the page, not one file per name. */
+async function seededShuffle({ songs }) {
+  section('a seed is a shuffle you can send');
+  const browser = await Browser.launch('no-user-gesture-required');
+  const tab = await browser.tab();
+  try {
+    await tab.go('/?seed=Omarchy');
+    let s = await until('the seeded shuffle to start', async () => {
+      const st = await tab.state();
+      return st.playing && st.at > 0 && st.rows >= songs.length ? st : null;
+    });
+    if (!s) return;
+    is(s.shuffled, true, 'a seed turns shuffle on');
+    is(s.search, '?seed=omarchy', `the address keeps the folded seed: ${s.search}`);
+    ok(!s.canonical.includes('?'), `the canonical link carries the seed: ${s.canonical}`);
+    ok(/shuffled/.test(s.note) && /omarchy/.test(s.note), `the note names it: ${s.note.trim()}`);
+    is(s.path, '/', 'the front page stays the front page');
+    const first = s.row;
+
+    await tab.click('#next');
+    s = await until('the seeded next', async () => {
+      const st = await tab.state();
+      return st.playing && st.row && st.row !== first ? st : null;
+    });
+    const second = s ? s.row : '';
+    if (s) {
+      ok(s.search.includes('seed=omarchy'), `next kept the seed: ${s.search}`);
+      is(s.path, '/', 'and did not take the address over');
+    }
+
+    await tab.go('/?seed=omarchy');
+    s = await until('the same shuffle again', async () => {
+      const st = await tab.state();
+      return st.playing && st.at > 0 && st.row === first ? st : null;
+    });
+    if (s) is(s.row, first, 'the same seed opens on the same song');
+    await tab.click('#next');
+    s = await until('the same next again', async () => {
+      const st = await tab.state();
+      return st.row === second ? st : null;
+    });
+    if (s) is(s.row, second, 'and steps to the same song');
+
+    const song = songs[1];
+    await tab.go(song.path + '?seed=omarchy');
+    s = await until('the song inside the shuffle', async () => {
+      const st = await tab.state();
+      return st.playing && st.row === song.title ? st : null;
+    });
+    if (s) {
+      is(s.row, song.title, 'the link still opens the song it names');
+      is(s.path, song.path, 'at that song\'s address');
+      ok(s.search.includes('seed=omarchy'), `and keeps the shuffle: ${s.search}`);
+      ok(!s.canonical.includes('seed'), `the canonical link grew a seed: ${s.canonical}`);
+    }
+    await tab.click('#next');
+    s = await until('the step from the named song', async () => {
+      const st = await tab.state();
+      return st.playing && st.row && st.row !== song.title ? st : null;
+    });
+    if (s) ok(s.search.includes('seed=omarchy'), `the step kept the seed: ${s.search}`);
+  } finally {
+    await tab.close();
+    await browser.close();
+  }
+}
+
 /* ── go ──────────────────────────────────────────────────────────────── */
 const server = serve();
 let code = 1;
@@ -1091,6 +1162,7 @@ try {
   await stalePlaylist(site);
   await desktopTheme();
   await offline(site);
+  await seededShuffle(site);
   console.log(`  ${passed - mark} checks`);
   console.log(`\n${passed} checks passed`);
   if (failures.length) {
